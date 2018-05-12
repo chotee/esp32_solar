@@ -1,5 +1,6 @@
 import utime
 import machine
+from machine import Pin, ADC
 import network
 import socket
 
@@ -11,6 +12,11 @@ led_pin = machine.Pin(5, machine.Pin.OUT)
 sta_if = network.WLAN(network.STA_IF)
 conns = []
 config = {}
+bat_pin = ADC(Pin(36))
+sol_pin = ADC(Pin(37))
+
+ADC_MAX_VOLTAGE = 1.1
+ADC_MAX_VALUE   = 2**12
 
 def setup():
     print("Setup Starting")
@@ -22,7 +28,7 @@ def main():
     print("Main Starting")
     operative = False
     while True:  # Main repetitive loop.
-        while not system_operative():
+        while not is_system_operative():
             prepare_loop()
         if not operative:
             operative_setup()
@@ -36,6 +42,7 @@ def toggle(pin):
 
 def operative_setup():
     print("System Now Operative.")
+    conns[0].send("Start\n")
 
 
 def prepare_loop():
@@ -69,10 +76,17 @@ def operative_loop():
     """
     toggle(led_pin)
     utime.sleep_ms(500)
-    conns[0].send("Foobar %g\n" % utime.ticks_ms())
+    bat_v = pin_to_voltage(bat_pin, 4.3)
+    sol_v = pin_to_voltage(sol_pin, 7.8)
+    conns[0].send("bat: %.3f, solar: %.3f, t: %dms\n" % (bat_v, sol_v, utime.ticks_ms()))
 
 
-def system_operative():
+def pin_to_voltage(pin, multi):
+    value = pin.read()
+    return (value * ADC_MAX_VOLTAGE * multi) / ADC_MAX_VALUE
+
+
+def is_system_operative():
     """
     Returns True if the system is ready to do it's normal operation
     :return: True if working, False otherwise.
