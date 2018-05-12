@@ -1,13 +1,16 @@
 import utime
 import machine
 import network
+import socket
 
 authfile = "auth.txt"
+server_host = '192.168.8.129'
+server_port = 2300
 
 led_pin = machine.Pin(5, machine.Pin.OUT)
 sta_if = network.WLAN(network.STA_IF)
+conns = []
 config = {}
-
 
 def setup():
     print("Setup Starting")
@@ -40,9 +43,22 @@ def prepare_loop():
     The loop that gets called when the system is not yet ready
     """
     if config["ess_id"]:
-        print("Connecting to '%s' with password" % config["ess_id"])
-        sta_if.connect(config["ess_id"], config["ess_pass"])
-    for x in range(4): # blink 4 times.
+        if not sta_if.isconnected():
+            print("Connecting to '%s' with password" % config["ess_id"])
+            sta_if.connect(config["ess_id"], config["ess_pass"])
+        elif len(conns) == 0:
+            try:
+                addr_info = socket.getaddrinfo(server_host, server_port)
+                addr = addr_info[0][-1]
+                s = socket.socket()
+                s.connect(addr)
+            except OSError as exc:
+                print("Failing to connect: %s" % exc)
+            else:
+                conns.append(s)
+        else:
+            print("Shouldn't get here.")
+    for x in range(4):  # blink 4 times.
         toggle(led_pin)
         utime.sleep_ms(150)
 
@@ -53,6 +69,7 @@ def operative_loop():
     """
     toggle(led_pin)
     utime.sleep_ms(500)
+    conns[0].send("Foobar %g\n" % utime.ticks_ms())
 
 
 def system_operative():
@@ -62,6 +79,8 @@ def system_operative():
     :rtype: bool
     """
     if not sta_if.isconnected():
+        return False
+    if len(conns) == 0:
         return False
     return True
 
