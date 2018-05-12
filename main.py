@@ -27,6 +27,10 @@ def main():
         operative_loop()
 
 
+def toggle(pin):
+    pin(not pin())
+
+
 def operative_setup():
     print("System Now Operative.")
 
@@ -38,19 +42,16 @@ def prepare_loop():
     if config["ess_id"]:
         print("Connecting to '%s' with password" % config["ess_id"])
         sta_if.connect(config["ess_id"], config["ess_pass"])
-    led_pin.value(1)
-    utime.sleep_ms(150)
-    led_pin.value(0)
-    utime.sleep_ms(150)
+    for x in range(4): # blink 4 times.
+        toggle(led_pin)
+        utime.sleep_ms(150)
 
 
 def operative_loop():
     """
     The normal work loop
     """
-    led_pin.value(1)
-    utime.sleep_ms(500)
-    led_pin.value(0)
+    toggle(led_pin)
     utime.sleep_ms(500)
 
 
