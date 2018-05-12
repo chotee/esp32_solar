@@ -4,6 +4,8 @@ from machine import Pin, ADC
 import network
 import socket
 
+from sht1x import Sht1x
+
 authfile = "auth.txt"
 server_host = '192.168.8.129'
 server_port = 2300
@@ -14,6 +16,10 @@ conns = []
 config = {}
 bat_pin = ADC(Pin(36))
 sol_pin = ADC(Pin(37))
+
+sht11_data = 0
+sht11_clk = 2
+sht11 = Sht1x(Pin(sht11_data), Pin(sht11_clk))
 
 ADC_MAX_VOLTAGE = 1.1
 ADC_MAX_VALUE   = 2**12
@@ -54,14 +60,19 @@ def prepare_loop():
             print("Connecting to '%s' with password" % config["ess_id"])
             sta_if.connect(config["ess_id"], config["ess_pass"])
         elif len(conns) == 0:
+            s = None
             try:
+                print("Connecting to %s" % server_host)
                 addr_info = socket.getaddrinfo(server_host, server_port)
                 addr = addr_info[0][-1]
                 s = socket.socket()
                 s.connect(addr)
             except OSError as exc:
                 print("Failing to connect: %s" % exc)
+                if s:
+                    s.close()
             else:
+                print("Connected.")
                 conns.append(s)
         else:
             print("Shouldn't get here.")
@@ -78,7 +89,11 @@ def operative_loop():
     utime.sleep_ms(500)
     bat_v = pin_to_voltage(bat_pin, 4.3)
     sol_v = pin_to_voltage(sol_pin, 7.8)
-    conns[0].send("bat: %.3f, solar: %.3f, t: %dms\n" % (bat_v, sol_v, utime.ticks_ms()))
+    temp_c = sht11.read_temperature_C()
+    hum_pct = sht11.read_humidity()
+    dew_p  = sht11.calculate_dew_point(temp_c, hum_pct)
+    conns[0].send("bat:%.3fv, solar:%.3fv, temp:%.2fc, hum:%.1f%%, dewp:%.1fc, t:%dms\n" % (
+        bat_v, sol_v, temp_c, hum_pct, dew_p, utime.ticks_ms()))
 
 
 def pin_to_voltage(pin, multi):
