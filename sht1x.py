@@ -1,5 +1,9 @@
 #!/usr/bin/python
 '''
+Ported to ESP32 by Chotee after being copied from
+https://github.com/contactless/wb-mqtt-sht1x/blob/master/sht1x.py , rev:318d29e
+
+---
 Created on Oct 5, 2012
 
 @author: Luca Nobili
@@ -14,26 +18,27 @@ The module raspberry-gpio-python requires root privileges, therefore, to run thi
 
 Example Usage:
 
->>> from sht1x.Sht1x import Sht1x as SHT1x
->>> sht1x = SHT1x(11,7)
+>>> from machine import Pin
+>>> from sht1x import Sht1x
+>>> sht1x = Sht1x(Pin(0), Pin(2))
 >>> sht1x.read_temperature_C()
 25.22
 >>> sht1x.read_humidity()
 52.6564216
 
 '''
-import traceback
-import sys
-import time
-import logging
+# import traceback
+# import sys
+# import time
+# import logging
 import math
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+import machine
+from machine import Pin
+import utime
 
-#~ import gpio
-#~ GPIO = gpio.GPIO
-import WB_IO.GPIO as GPIO
+# logging.basicConfig(level=logging.INFO)
+# logger = logging.getLogger(__name__)
 
 #   Conversion coefficients from SHT15 datasheet
 D1 = -39.6  # for 14 Bit @ 3V
@@ -45,14 +50,45 @@ C3 = -0.0000015955 # for 12 Bit
 T1 =  0.01      # for 14 Bit @ 5V
 T2 =  0.00008   # for 14 Bit @ 5V
 
-class Sht1x(object):
-    #~ GPIO_BOARD = GPIO.BOARD
-    #~ GPIO_BCM = GPIO.BCM
 
-    def __init__(self, dataPin, sckPin, gpioMode = 1):
+class SystemError(Exception):
+    pass
+
+
+class GPIO(object):
+    LOW  = 0
+    HIGH = 1
+    IN = Pin.IN
+    OUT = Pin.OUT
+
+    @classmethod
+    def output(cls, pin, value):
+        pin.value(value)
+
+    @classmethod
+    def input(cls, pin):
+        return pin.value()
+
+    @classmethod
+    def setup(cls, pin, mode):
+        pin.init(mode)
+
+
+class logger(object):
+    @classmethod
+    def debug(cls, msg, *args):
+        pass
+        # print("DBG: " + (msg % args))
+
+    @classmethod
+    def error(cls, msg, *args):
+        print("ERR: " + (msg % args))
+
+
+class Sht1x(object):
+    def __init__(self, dataPin, sckPin):
         self.dataPin = dataPin
         self.sckPin = sckPin
-        #~ GPIO.setmode(gpioMode)
 
 #    I deliberately will not implement read_temperature_F because I believe in the
 #    in the Metric System (http://en.wikipedia.org/wiki/Metric_system)
@@ -64,7 +100,7 @@ class Sht1x(object):
         self.__waitForResult()
         rawTemperature = self.__getData16Bit()
         self.__skipCrc()
-        GPIO.cleanup()
+        # GPIO.cleanup()
 
         return rawTemperature * D2 + D1
 
@@ -80,7 +116,7 @@ class Sht1x(object):
         self.__waitForResult()
         rawHumidity = self.__getData16Bit()
         self.__skipCrc()
-        GPIO.cleanup()
+        # GPIO.cleanup()
 #        Apply linear conversion to raw value
         linearHumidity = C1 + C2 * rawHumidity + C3 * rawHumidity * rawHumidity
 #        Correct humidity value for current temperature
@@ -133,15 +169,14 @@ class Sht1x(object):
 
     def __clockTick(self, value):
         GPIO.output(self.sckPin, value)
-#       100 nanoseconds
-        time.sleep(.0000001)
+        utime.sleep_us(1)  # 1 micro-second (was 100 nano-seconds)
 
     def __waitForResult(self):
         GPIO.setup(self.dataPin, GPIO.IN)
 
         for i in range(100):
 #            10 milliseconds
-            time.sleep(.01)
+            utime.sleep_ms(10)
             ack = GPIO.input(self.dataPin)
             if ack == GPIO.LOW:
                 break
@@ -189,41 +224,3 @@ class Sht1x(object):
         for i in range(10):
             self.__clockTick(GPIO.HIGH)
             self.__clockTick(GPIO.LOW)
-
-class WaitingSht1x(Sht1x):
-    def __init__(self, dataPin, sckPin):
-        super(WaitingSht1x, self).__init__(dataPin, sckPin)
-        self.__lastInvocationTime = 0
-
-    def read_temperature_C(self):
-        self.__wait()
-        return super(WaitingSht1x, self).read_temperature_C()
-
-    def read_humidity(self):
-        temperature = self.read_temperature_C()
-        self.__wait()
-        return super(WaitingSht1x, self)._read_humidity(temperature)
-
-    def read_temperature_and_Humidity(self):
-        temperature = self.read_temperature_C()
-        self.__wait()
-        humidity = super(WaitingSht1x, self)._read_humidity(temperature)
-        return (temperature, humidity)
-
-    def __wait(self):
-        lastInvocationDelta = time.time() - self.__lastInvocationTime
-#        if we queried the sensor less then a second ago, wait until a second is passed
-        if lastInvocationDelta < 1:
-            time.sleep(1 - lastInvocationDelta)
-        self.__lastInvocationTime = time.time()
-
-def main():
-    sht1x = WaitingSht1x(246, 247)
-    #~ print(sht1x.read_temperature_C())
-    #~ print(sht1x.read_humidity())
-    aTouple = sht1x.read_temperature_and_Humidity()
-    print("Temperature: {} Humidity: {}".format(aTouple[0], aTouple[1]))
-    #~ print(sht1x.calculate_dew_point(20, 50))
-
-if __name__ == '__main__':
-    main()
